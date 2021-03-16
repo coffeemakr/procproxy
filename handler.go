@@ -20,7 +20,7 @@ type ProxyResponse struct {
 	ContentType string
 }
 
-type ProxyAction func(w http.ResponseWriter, action string, arguments string, upstream *http.Response) (*ProxyResponse, error)
+type ProxyAction func(action string, arguments string, upstream *http.Response) (*ProxyResponse, error)
 
 func (c *ProxyHandler) LoadDocument(path string) (*http.Response, error) {
 	var backendUrl string
@@ -55,7 +55,7 @@ func (c *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		printError(w, 500, "Failed to load upstream document")
 		return
 	}
-	result, err := c.ProxyAction(w, action, args, response)
+	result, err := c.ProxyAction(action, args, response)
 	if err != nil {
 		log.Println(err)
 		printError(w, 500, "Failed to execute action")
@@ -92,6 +92,7 @@ func RunProxyHandler(action ProxyAction) {
 func printError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'")
 	w.WriteHeader(statusCode)
 	_, _ = fmt.Fprintf(w, "Error: %s", message)
 }
