@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -184,7 +185,7 @@ func (h *ProxyHandler) RunFromCommandLine() {
 	h.BackendUrl = *backendPtr
 
 	if *debug {
-		h.Debug = log.Default()
+		h.Debug = log.New(os.Stderr, "", log.Ldate | log.Ltime)
 	}
 
 	http.Handle("/", h)
