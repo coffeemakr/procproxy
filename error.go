@@ -20,9 +20,9 @@ type HttpError interface {
 }
 
 type UserError struct {
-	Code int
+	Code    int
 	Message string
-	Err error
+	Err     error
 }
 
 func (e UserError) WithError(err error) *UserError {
@@ -42,7 +42,7 @@ func (e UserError) ErrorMessage() string {
 }
 
 type ArgumentErr struct {
-	Err error
+	Err     error
 	Message string
 }
 
@@ -61,3 +61,12 @@ func (e *ArgumentErr) ErrorMessage() string {
 		return "invalid arguments"
 	}
 }
+
+type RequestFailedErr struct {
+	Response *http.Response
+}
+
+func (r RequestFailedErr) Error() string {
+	return fmt.Sprintf("error loading document: %s", r.Response.Status)
+}
+
