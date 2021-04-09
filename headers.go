@@ -29,8 +29,7 @@ func (h headerWhitelistSet) IsWhitelisted(name string) bool {
 
 func (h headerWhitelistSet) Filter(headers http.Header) {
 	for existingHeader := range headers {
-		canonicalHeaderKey := http.CanonicalHeaderKey(existingHeader)
-		if h[canonicalHeaderKey] {
+		if !h.IsWhitelisted(existingHeader) {
 			headers.Del(existingHeader)
 		}
 	}
