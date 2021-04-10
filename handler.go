@@ -78,6 +78,14 @@ func (h *ProxyHandler) log(format string, values ...interface{}) {
 	}
 }
 
+var DefaultClient = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
+// Get fetches a document from the backend and returns the response or an if the connection failed.
+// Checking the status code and reading the content is up to the caller.
 func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, error) {
 	if h.BackendUrl[len(h.BackendUrl)-1] != '/' {
 		path = "/" + path
@@ -88,7 +96,7 @@ func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, er
 	if h.Client != nil {
 		client = h.Client
 	} else {
-		client = http.DefaultClient
+		client = DefaultClient
 	}
 	h.filterForwardedRequestHeaders(headers)
 	request, err := http.NewRequest(http.MethodGet, backendUrl, nil)
@@ -142,6 +150,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		printError(w, http.StatusBadGateway, "error loading upstream document", err)
 		return
 	}
+
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
@@ -163,6 +172,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := action.Run(args, response)
 	if err != nil {
+		h.log("action failed: %s", err)
 		printError(w, http.StatusInternalServerError, "Failed to execute action", err)
 		return
 	}
