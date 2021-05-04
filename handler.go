@@ -1,6 +1,7 @@
 package procproxy
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -194,7 +195,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log("Request %s failed: %s", r.RequestURI, errorMessage)
 		h.log("error details: %s", err.Error())
 		statusCode := http.StatusInternalServerError
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'")
 		if httpError, ok := err.(ErrWithStatusCode); ok {
@@ -202,7 +203,15 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(statusCode)
-		_, _ = fmt.Fprintf(w, "Error: %s\n", errorMessage)
+		encoder := json.NewEncoder(w)
+		err := encoder.Encode(struct {
+			Error string `json:"error"`
+		}{
+			Error: errorMessage,
+		})
+		if err != nil {
+			h.log("error writing json error: %s", err)
+		}
 	}
 }
 
