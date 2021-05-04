@@ -1,6 +1,7 @@
 package procproxy
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -114,41 +115,40 @@ func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, er
 	h.log("loading URL: %s", backendUrl)
 	resp, err := client.Do(request)
 	if err != nil {
+		err = fmt.Errorf("error loading document at %s: %s", backendUrl, err)
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *ProxyHandler) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 	var err error
 	path := r.URL.EscapedPath()
 	h.log("got path %s", path)
 	parts := strings.SplitN(path[1:], "/", 3)
 	if len(parts) != 3 {
-		h.log("Did not get 3 parts: %d parts\n", len(parts))
-		printError(w, 404, "Invalid path", nil)
-		return
+		err := fmt.Errorf("error getting 3 parts: %d parts\n", len(parts))
+		return HttpError(404, "Invalid path", err)
+
 	}
 	actionName := parts[0]
 	if h.ProxyAction == nil {
-		printError(w, http.StatusInternalServerError, "no action configured", err)
-		return
+		err = errors.New("no action configured")
+		return HttpError(http.StatusInternalServerError, "Proxy has no actions configured", err)
 	}
 	action := h.ProxyAction[actionName]
 	if action == nil {
 		action = h.ProxyAction[defaultActionName]
 		if action == nil {
-			printError(w, http.StatusNotFound, "action doesnt exist", err)
-			return
+			err = fmt.Errorf("no action with name %s", actionName)
+			return HttpError(http.StatusNotFound, "action doesnt exist", err)
 		}
 	}
 
 	args := parts[1]
 	response, err := h.Get(parts[2], r.Header)
 	if err != nil {
-		h.log("document load error: %s", err)
-		printError(w, http.StatusBadGateway, "error loading upstream document", err)
-		return
+		return HttpError(http.StatusBadGateway, "error loading upstream document", err)
 	}
 
 	defer func(Body io.ReadCloser) {
@@ -164,17 +164,15 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case 304:
 		h.writeForwardedResponseHeaders(w.Header(), response.Header)
 		w.WriteHeader(response.StatusCode)
-		return
+		return nil
 	default:
-		printError(w, http.StatusBadGateway, "Gateway request failed", nil)
-		return
+		err := fmt.Errorf("error loading document at %s: %s", response.Request.URL, response.Status)
+		return HttpError(http.StatusBadGateway, "Gateway request failed", err)
 	}
 
 	result, err := action.Run(args, response)
 	if err != nil {
-		h.log("action failed: %s", err)
-		printError(w, http.StatusInternalServerError, "Failed to execute action", err)
-		return
+		return err
 	}
 	h.writeForwardedResponseHeaders(w.Header(), response.Header)
 	w.Header().Set("Content-Type", result.ContentType)
@@ -183,6 +181,29 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(result.Content)))
 	w.WriteHeader(200)
 	_, _ = w.Write(result.Content)
+	return nil
+}
+
+func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	err := h.serveHTTP(w, r)
+	if err != nil {
+		errorMessage := "an error occurred processing the request"
+		if userError, ok := err.(ErrWithUserMessage); ok {
+			errorMessage = userError.ReadableError()
+		}
+		h.log("Request %s failed: %s", r.RequestURI, errorMessage)
+		h.log("error details: %s", err.Error())
+		statusCode := http.StatusInternalServerError
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'")
+		if httpError, ok := err.(ErrWithStatusCode); ok {
+			statusCode = httpError.StatusCode()
+		}
+
+		w.WriteHeader(statusCode)
+		_, _ = fmt.Fprintf(w, "Error: %s\n", errorMessage)
+	}
 }
 
 func (h *ProxyHandler) RunFromCommandLine() {
@@ -204,16 +225,4 @@ func (h *ProxyHandler) RunFromCommandLine() {
 
 	log.Printf("Starting to listen on '%s'\n", *listenAddress)
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))
-}
-
-func printError(w http.ResponseWriter, defaultStatusCode int, defaultMessage string, err error) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'")
-	if httpError, ok := err.(HttpError); ok {
-		defaultStatusCode = httpError.StatusCode()
-		defaultMessage = httpError.ErrorMessage()
-	}
-	w.WriteHeader(defaultStatusCode)
-	_, _ = fmt.Fprintf(w, "Error: %s\n", defaultMessage)
 }
