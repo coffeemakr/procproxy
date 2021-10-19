@@ -178,7 +178,6 @@ func (h *ProxyHandler) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 	h.writeForwardedResponseHeaders(w.Header(), response.Header)
 	w.Header().Set("Content-Type", result.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "script-src 'none'; object-src 'none'; default-src 'unsafe-inline'")
 	w.Header().Set("Content-Length", strconv.Itoa(len(result.Content)))
 	w.WriteHeader(200)
 	_, _ = w.Write(result.Content)
