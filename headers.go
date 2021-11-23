@@ -4,62 +4,77 @@ import (
 	"net/http"
 )
 
-type HeaderWhitelist interface {
-	Filter(headers http.Header)
-	IsWhitelisted(name string) bool
-	WriteFilteredTo(to http.Header, headers http.Header)
+type HeaderFilter interface {
+	Passes(name string) bool
 }
 
-type headerWhitelistSet map[string]bool
+type booleanHeaderFilter bool
 
-func (h headerWhitelistSet) WriteFilteredTo(to http.Header, headers http.Header) {
-	for name := range headers {
-		ok := h.IsWhitelisted(name)
-		if ok {
-			// we ignore multiple headers
-			to.Set(name, headers.Get(name))
+func (b booleanHeaderFilter) Passes(_ string) bool {
+	return bool(b)
+}
+
+var AllowAllHeaders HeaderFilter = booleanHeaderFilter(true)
+
+func CopyAllowedHeadersTo(filter func(string) bool, to http.Header, from http.Header)  {
+	for name := range from {
+		if filter(name) {
+			values := from.Values(name)
+			to.Del(name)
+			for _, value := range values {
+				to.Add(name, value)
+			}
 		}
 	}
 }
 
-func (h headerWhitelistSet) IsWhitelisted(name string) bool {
+func FilterAllowedHeaders(f HeaderFilter, headers http.Header)  {
+	for name := range headers {
+		if !f.Passes(name) {
+			headers.Del(name)
+		}
+	}
+}
+
+type headerAllowList map[string]bool
+
+func (h headerAllowList) Passes(name string) bool {
 	canonized := http.CanonicalHeaderKey(name)
 	return h[canonized]
 }
 
-func (h headerWhitelistSet) Filter(headers http.Header) {
-	for existingHeader := range headers {
-		if !h.IsWhitelisted(existingHeader) {
-			headers.Del(existingHeader)
-		}
-	}
+type headerBlocklist map[string]bool
+
+func (h headerBlocklist) Passes(name string) bool {
+	canonized := http.CanonicalHeaderKey(name)
+	return !h[canonized]
 }
 
-func NewHeaderWhitelist(names... string) HeaderWhitelist {
-	whitelist := make(headerWhitelistSet)
+func NewHeaderAllowList(names... string) HeaderFilter {
+	filter := make(headerAllowList)
 	for _, value := range names {
-		whitelist[http.CanonicalHeaderKey(value)] = true
+		filter[http.CanonicalHeaderKey(value)] = true
 	}
-	return whitelist
+	return filter
 }
 
-var defaultRequestHeadersWhitelist = NewHeaderWhitelist(
-	"referer",
-	"upgrade-insecure-requests",
-	"if-modified-since",
-	"if-unmodified-since",
-	"if-none-match",
-	"if-match",
-	"cache-control",
-	"pragma",
-)
+func NewHeaderBlockList(names... string) HeaderFilter {
+	filter := make(headerBlocklist)
+	for _, value := range names {
+		filter[http.CanonicalHeaderKey(value)] = true
+	}
+	return filter
+}
 
-var defaultResponseHeadersWhitelist = NewHeaderWhitelist(
-	"etag",
-	"expires",
-	"cache-control",
-	"age",
-	"pragma",
-	"vary",
-	"last-modified",
+// The HopByHopHeaderFilter blocks headers according to
+// https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1
+var HopByHopHeaderFilter = NewHeaderBlockList(
+	"connection",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"te",
+	"trailers",
+	"transfer-encoding",
+	"upgrade",
 )

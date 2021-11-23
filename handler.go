@@ -19,33 +19,29 @@ const (
 )
 
 type ProxyHandler struct {
-	Client             *http.Client
-	Debug              *log.Logger
-	UserAgent          string
-	BackendUrl         string
-	ProxyAction        map[string]ProxyAction
-	fwdRequestHeaders  HeaderWhitelist
-	fwdResponseHeaders HeaderWhitelist
+	Client               *http.Client
+	Debug                *log.Logger
+	UserAgent            string
+	BackendUrl           string
+	ProxyAction          map[string]ProxyAction
+	RequestHeaderFilter  HeaderFilter
+	ResponseHeaderFilter HeaderFilter
 }
 
 func (h *ProxyHandler) writeForwardedResponseHeaders(writtenTo http.Header, headers http.Header) {
-	var filters HeaderWhitelist
-	if h.fwdResponseHeaders == nil {
-		filters = defaultResponseHeadersWhitelist
-	} else {
-		filters = h.fwdResponseHeaders
+	var filter = h.ResponseHeaderFilter
+	if filter == nil {
+		filter = HopByHopHeaderFilter
 	}
-	filters.WriteFilteredTo(writtenTo, headers)
+	CopyAllowedHeadersTo(filter.Passes, writtenTo, headers)
 }
 
 func (h *ProxyHandler) filterForwardedRequestHeaders(header http.Header) {
-	var filters HeaderWhitelist
-	if h.fwdRequestHeaders == nil {
-		filters = defaultRequestHeadersWhitelist
-	} else {
-		filters = h.fwdRequestHeaders
+	var filter = h.ResponseHeaderFilter
+	if filter == nil {
+		filter = HopByHopHeaderFilter
 	}
-	filters.Filter(header)
+	FilterAllowedHeaders(h.RequestHeaderFilter, header)
 }
 
 func (h *ProxyHandler) Handle(name string, action ProxyAction) {
@@ -100,7 +96,8 @@ func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, er
 	} else {
 		client = DefaultClient
 	}
-	h.filterForwardedRequestHeaders(headers)
+	var upstreamRequestHeaders = headers.Clone()
+	h.filterForwardedRequestHeaders(upstreamRequestHeaders)
 	request, err := http.NewRequest(http.MethodGet, backendUrl, nil)
 	if err != nil {
 		return nil, err
