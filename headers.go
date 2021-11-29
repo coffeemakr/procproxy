@@ -90,6 +90,9 @@ var HopByHopHeaderFilter = NewHeaderBlockList(
 	"trailers",
 	"transfer-encoding",
 	"upgrade",
+	// other headers that are not used end-to-end because we decode and re-encode the content
 	"range",
 	"accept-ranges",
+	"content-encoding",
+	"accept-encoding",
 )
