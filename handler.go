@@ -14,14 +14,13 @@ import (
 )
 
 const (
-	defaultUserAgent  = "proxproxy/1 (+github.com/coffeemakr/procproxy)"
 	defaultActionName = ""
 )
 
 type ProxyHandler struct {
 	Client               *http.Client
 	Debug                *log.Logger
-	UserAgent            string
+	ClientHeaders        http.Header
 	BackendUrl           string
 	ProxyAction          map[string]ProxyAction
 	RequestHeaderFilter  HeaderFilter
@@ -82,6 +81,15 @@ var DefaultClient = &http.Client{
 	},
 }
 
+func (h *ProxyHandler) requestHeaders(headers http.Header) http.Header {
+	var upstreamRequestHeaders = headers.Clone()
+	h.filterForwardedRequestHeaders(upstreamRequestHeaders)
+	if h.ClientHeaders != nil {
+		CopyHeaders(upstreamRequestHeaders, h.ClientHeaders)
+	}
+	return headers
+}
+
 // Get fetches a document from the backend and returns the response or an if the connection failed.
 // Checking the status code and reading the content is up to the caller.
 func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, error) {
@@ -96,20 +104,13 @@ func (h *ProxyHandler) Get(path string, headers http.Header) (*http.Response, er
 	} else {
 		client = DefaultClient
 	}
-	var upstreamRequestHeaders = headers.Clone()
-	h.filterForwardedRequestHeaders(upstreamRequestHeaders)
 	request, err := http.NewRequest(http.MethodGet, backendUrl, nil)
 	if err != nil {
 		return nil, err
 	}
-	request.Header = headers
-	var userAgent string
-	if h.UserAgent == "" {
-		userAgent = defaultUserAgent
-	} else {
-		userAgent = h.UserAgent
-	}
-	request.Header.Set("User-Agent", userAgent)
+
+	request.Header = h.requestHeaders(headers)
+
 	h.log("loading URL: %s", backendUrl)
 	resp, err := client.Do(request)
 	if err != nil {
