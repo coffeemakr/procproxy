@@ -87,7 +87,7 @@ func (h *ProxyHandler) requestHeaders(headers http.Header) http.Header {
 	if h.ClientHeaders != nil {
 		CopyHeaders(upstreamRequestHeaders, h.ClientHeaders)
 	}
-	return headers
+	return upstreamRequestHeaders
 }
 
 // Get fetches a document from the backend and returns the response or an if the connection failed.
