@@ -77,4 +77,6 @@ var HopByHopHeaderFilter = NewHeaderBlockList(
 	"trailers",
 	"transfer-encoding",
 	"upgrade",
+	"range",
+	"accept-ranges",
 )
