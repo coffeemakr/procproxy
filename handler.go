@@ -41,7 +41,7 @@ func (h *ProxyHandler) filterForwardedRequestHeaders(header http.Header) {
 	if filter == nil {
 		filter = HopByHopHeaderFilter
 	}
-	FilterAllowedHeaders(h.RequestHeaderFilter, header)
+	FilterAllowedHeaders(filter, header)
 }
 
 func (h *ProxyHandler) Handle(name string, action ProxyAction) {
